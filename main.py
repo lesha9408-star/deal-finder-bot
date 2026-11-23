@@ -2,8 +2,10 @@ import sys
 import time
 import re
 import logging
+from zoneinfo import ZoneInfo
+from datetime import datetime
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, BASE_DIR
-from database import init_db, is_seen, mark_as_seen
+from database import init_db, is_seen, mark_as_seen, get_seen_apartment_price, update_seen_price
 from notifier import send_telegram_message, send_telegram_photo
 from comparator import verify_and_enrich_deal
 from scrapers.real_estate import get_latest_kyiv_apartments
@@ -19,7 +21,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def notify_apartments(max_items: int = 2):
+def should_check_apartments(force: bool = False) -> bool:
+    if force:
+        return True
+    kyiv_hour = datetime.now(ZoneInfo("Europe/Kyiv")).hour
+    # Strictly send apartments twice a day: at 12:00 and 20:00 Kyiv time
+    return kyiv_hour in (12, 20)
+
+def notify_apartments(max_items: int = 2, force: bool = False):
+    if not should_check_apartments(force=force):
+        logger.info("Пропуск квартир (отправка строго 2 раза в день: в 12:00 и 20:00 по Киеву)")
+        return
+
     logger.info("--- Поиск квартир: Киев, ПРАВЫЙ БЕРЕГ <= 4 км от м. Олимпийская (до $40,000) ---")
     flats = get_latest_kyiv_apartments()
     sent_count = 0
@@ -29,24 +42,55 @@ def notify_apartments(max_items: int = 2):
             break
 
         item_id = flat["id"]
-        if is_seen(item_id):
-            continue
-
         title = flat["title"]
-        price = flat["price"]
+        price_str = flat["price"]
         location = flat["location"]
         url = flat["url"]
         source = flat["source"]
         photo = flat.get("photo_url")
 
-        caption = (
-            f"🏠 <b>Квартира: Правый берег (до $40k)</b>\n"
-            f"📍 <i>{source}</i>\n\n"
-            f"💰 <b>Цена:</b> {price}\n"
-            f"📌 <b>Локация:</b> {location}\n"
-            f"📝 <b>Объект:</b> {title}\n\n"
-            f"🔗 <a href='{url}'>Открыть объявление</a>"
-        )
+        # Parse numeric price
+        curr_price_num = None
+        digits = re.findall(r"\d+", price_str.replace(" ", "").replace(",", ""))
+        if digits:
+            try:
+                curr_price_num = float("".join(digits))
+            except Exception:
+                pass
+
+        is_already_seen = is_seen(item_id)
+        is_price_drop = False
+        price_diff = 0
+        old_price_num = None
+
+        if is_already_seen:
+            old_price_num = get_seen_apartment_price(item_id)
+            if old_price_num and curr_price_num and curr_price_num < old_price_num:
+                price_diff = old_price_num - curr_price_num
+                if price_diff >= 500:  # Price dropped by at least $500 USD
+                    is_price_drop = True
+            if not is_price_drop:
+                continue
+
+        if is_price_drop:
+            caption = (
+                f"📉 <b>СНИЖЕНИЕ ЦЕНЫ НА КВАРТИРУ!</b>\n"
+                f"📍 <i>{source}</i>\n\n"
+                f"💰 <b>Новая цена:</b> ${curr_price_num:,.0f} <s>(${old_price_num:,.0f})</s>\n"
+                f"🔥 <b>Снижение цены продавцом:</b> -${price_diff:,.0f} USD!\n"
+                f"📌 <b>Локация:</b> {location}\n"
+                f"📝 <b>Объект:</b> {title}\n\n"
+                f"🔗 <a href='{url}'>Открыть объявление</a>"
+            )
+        else:
+            caption = (
+                f"🏠 <b>Квартира: Правый берег (до $40k)</b>\n"
+                f"📍 <i>{source}</i>\n\n"
+                f"💰 <b>Цена:</b> {price_str}\n"
+                f"📌 <b>Локация:</b> {location}\n"
+                f"📝 <b>Объект:</b> {title}\n\n"
+                f"🔗 <a href='{url}'>Открыть объявление</a>"
+            )
 
         success = False
         if photo:
@@ -55,11 +99,14 @@ def notify_apartments(max_items: int = 2):
             success = send_telegram_message(caption, item_key=item_id)
 
         if success:
-            mark_as_seen(item_id, source, title, price, url)
+            if is_price_drop:
+                update_seen_price(item_id, price_str)
+            else:
+                mark_as_seen(item_id, source, title, price_str, url)
             sent_count += 1
             time.sleep(1.2)
 
-    logger.info(f"Отправлено новых квартир: {sent_count}")
+    logger.info(f"Отправлено квартир/снижений цен: {sent_count}")
 
 def notify_food_groceries(max_items: int = 3):
     logger.info("--- Поиск РЕАЛЬНО дешевых базовых продуктов (Auchan, Novus, Varus) ---")
@@ -266,10 +313,11 @@ def notify_kfc(max_items: int = 1):
 
 def run_once():
     init_db()
-    notify_food_groceries(max_items=4)
+    force_apartments = "--apartments" in sys.argv
+    notify_food_groceries(max_items=3)
     notify_cheap_cat_pouches(max_items=1)
     notify_branded_outlet(max_items=1)
-    notify_apartments(max_items=2)
+    notify_apartments(max_items=2, force=force_apartments)
     notify_kfc(max_items=1)
 
 if __name__ == "__main__":

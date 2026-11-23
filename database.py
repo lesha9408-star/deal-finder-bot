@@ -44,6 +44,30 @@ def is_seen(item_key: str) -> bool:
     conn.close()
     return row is not None
 
+def get_seen_apartment_price(item_key: str) -> Optional[float]:
+    """Returns previously recorded numeric price if seen, else None."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT price FROM seen_items WHERE item_key = ?", (item_key,))
+    row = cursor.fetchone()
+    conn.close()
+    if row and row[0]:
+        nums = re.findall(r"\d+", str(row[0]).replace(" ", "").replace(",", ""))
+        if nums:
+            try:
+                return float("".join(nums))
+            except Exception:
+                pass
+    return None
+
+def update_seen_price(item_key: str, new_price: str):
+    """Updates the recorded price when a price drop occurs."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE seen_items SET price = ? WHERE item_key = ?", (str(new_price), item_key))
+    conn.commit()
+    conn.close()
+
 def mark_as_seen(item_key: str, source: str, title: str, price: str, url: str):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
