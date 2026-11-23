@@ -29,6 +29,13 @@ def should_check_apartments(force: bool = False) -> bool:
     # Strictly send apartments twice a day: at 12:00 and 20:00 Kyiv time
     return kyiv_hour in (12, 20)
 
+def should_check_makeup(force: bool = False) -> bool:
+    if force:
+        return True
+    kyiv_hour = datetime.now(ZoneInfo("Europe/Kyiv")).hour
+    # Send MakeUp clearance digest once a day at 12:00 Kyiv time
+    return kyiv_hour == 12
+
 def notify_apartments(max_items: int = 2, force: bool = False):
     if not should_check_apartments(force=force):
         logger.info("Пропуск квартир (отправка строго 2 раза в день: в 12:00 и 20:00 по Киеву)")
@@ -282,10 +289,14 @@ def notify_branded_outlet(max_items: int = 2):
 
     logger.info(f"Отправлено ликвидаций брендовой одежды: {sent_count}")
 
-def notify_makeup_clearance(max_items: int = 1):
-    """Notifies on real clearance / uncenka items from MakeUp."""
-    logger.info("--- Поиск уцененных товаров на MakeUp ---")
-    deals = get_makeup_clearance_deals(max_results=max_items * 4)
+def notify_makeup_clearance(max_items: int = 10, force: bool = False):
+    """Notifies on real clearance / uncenka items from MakeUp once a day (10 items max discount, men/unisex)."""
+    if not should_check_makeup(force=force):
+        logger.info("Пропуск MakeUp (отправка строго 1 раз в день в 12:00 по Киеву)")
+        return
+
+    logger.info("--- Поиск топ-10 уцененных товаров на MakeUp (мужской уход/парфюм) ---")
+    deals = get_makeup_clearance_deals(max_results=max_items, min_discount=35)
     sent_count = 0
 
     for deal in deals:
@@ -299,15 +310,16 @@ def notify_makeup_clearance(max_items: int = 1):
         title = deal["title"]
         curr_price = deal["current_price"]
         old_price = deal.get("old_price")
+        discount = deal.get("discount_percent", 0)
         source = deal["store"]
         url = deal["url"]
         photo = deal.get("image_url")
 
         caption = (
-            f"💄 <b>MakeUp: Раздел Уценка / Скидки</b>\n"
+            f"💄 <b>MakeUp: Супер-скидка -{discount}% (Уцінка)</b>\n"
             f"🏬 <i>{source}</i>\n\n"
             f"📦 <b>{title}</b>\n"
-            f"💵 <b>Цена:</b> <b>{curr_price}</b>"
+            f"💵 <b>Цена по скидке:</b> <b>{curr_price}</b>"
         )
         if old_price:
             caption += f" <s>({old_price})</s>\n\n"
@@ -315,7 +327,7 @@ def notify_makeup_clearance(max_items: int = 1):
             caption += "\n\n"
 
         caption += (
-            f"💡 <i>Товар из официального раздела уценки MakeUp (поврежденная упаковка/ликвидация).</i>\n\n"
+            f"🔥 <i>Скидка {discount}% на оригинальный товар (поврежденная коробка или финальная ликвидация). Без косметики и шиммеров!</i>\n\n"
             f"🛒 <a href='{url}'>Заказать на MakeUp</a>"
         )
 
@@ -365,10 +377,11 @@ def notify_kfc(max_items: int = 1):
 def run_once():
     init_db()
     force_apartments = "--apartments" in sys.argv
+    force_makeup = "--makeup" in sys.argv
     notify_food_groceries(max_items=3)
     notify_cheap_cat_pouches(max_items=1)
     notify_branded_outlet(max_items=1)
-    notify_makeup_clearance(max_items=1)
+    notify_makeup_clearance(max_items=10, force=force_makeup)
     notify_apartments(max_items=2, force=force_apartments)
     notify_kfc(max_items=1)
 
