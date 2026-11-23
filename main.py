@@ -80,10 +80,28 @@ def notify_apartments(max_items: int = 2, force: bool = False):
             if not is_price_drop:
                 continue
 
+        # AI price analysis by district
+        market_note = ""
+        if curr_price_num:
+            loc_low = (location + " " + title).lower()
+            if "печер" in loc_low:
+                if curr_price_num <= 35000:
+                    market_note = "🔥 <b>Анализ бота:</b> <i>Супер-цена для Печерска! В этом районе медиана от $45k+. Рекомендуем смотреть в первую очередь.</i>\n\n"
+                elif curr_price_num <= 38000:
+                    market_note = "💡 <b>Анализ бота:</b> <i>Цена ниже средней для Печерска (низ рынка для локации). Стоит обратить внимание!</i>\n\n"
+            elif any(k in loc_low for k in ["голосі", "голосе", "олімпій", "олимпий", "либед", "лыбед"]):
+                if curr_price_num <= 33000:
+                    market_note = "🔥 <b>Анализ бота:</b> <i>Реально классная цена для центра/Голосеево! Заметно ниже рынка.</i>\n\n"
+                elif curr_price_num <= 36000:
+                    market_note = "💡 <b>Анализ бота:</b> <i>Хорошая адекватная цена возле метро на Правом берегу. Стоит присмотреться.</i>\n\n"
+            elif curr_price_num <= 31000:
+                market_note = "🔥 <b>Анализ бота:</b> <i>Очень низкий порог входа на Правом берегу (<$31k)! Стоит обратить внимание.</i>\n\n"
+
         if is_price_drop:
             caption = (
                 f"📉 <b>СНИЖЕНИЕ ЦЕНЫ НА КВАРТИРУ!</b>\n"
                 f"📍 <i>{source}</i>\n\n"
+                f"{market_note}"
                 f"💰 <b>Новая цена:</b> ${curr_price_num:,.0f} <s>(${old_price_num:,.0f})</s>\n"
                 f"🔥 <b>Снижение цены продавцом:</b> -${price_diff:,.0f} USD!\n"
                 f"📌 <b>Локация:</b> {location}\n"
@@ -94,6 +112,7 @@ def notify_apartments(max_items: int = 2, force: bool = False):
             caption = (
                 f"🏠 <b>Квартира: Правый берег (до $40k)</b>\n"
                 f"📍 <i>{source}</i>\n\n"
+                f"{market_note}"
                 f"💰 <b>Цена:</b> {price_str}\n"
                 f"📌 <b>Локация:</b> {location}\n"
                 f"📝 <b>Объект:</b> {title}\n\n"

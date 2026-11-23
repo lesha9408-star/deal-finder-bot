@@ -19,11 +19,13 @@ DECORATIVE_EXCLUDES = [
     "для губ", "для вій", "манікюр", "педикюр", "браслет"
 ]
 
+MAX_PERFUME_PRICE_UAH = 700.0
+
 MEN_AND_UNISEX_QUERIES = [
-    "уцінка чоловікам", "уцінка men", "розпродаж чоловікам", "уцінка парфуми чоловічі",
+    "уцінка чоловікам", "уцінка men", "розпродаж чоловікам",
     "уцінка гоління", "уцінка дезодорант", "уцінка дифузор", "уцінка шампунь чоловічий",
     "уцінка гель для душу", "уцінка тканинна маска", "уцінка маска для обличчя",
-    "уцінка догляд за обличчям", "уцінка крем для обличчя"
+    "уцінка догляд за обличчям", "уцінка крем для обличчя", "уцінка"
 ]
 
 def get_makeup_clearance_deals(max_results: int = 10, min_discount: int = 40) -> List[Dict[str, Any]]:
@@ -86,6 +88,11 @@ def get_makeup_clearance_deals(max_results: int = 10, min_discount: int = 40) ->
                             m = re.search(r"(\d+[\d\s]*)", p_old_el.get_text())
                             if m:
                                 old_price = float(m.group(1).replace(" ", "").replace("\xa0", ""))
+
+                        # Enforce hard perfume ceiling of 700 UAH
+                        is_perfume = any(k in title_lower for k in ["парфум", "туалетна вода", "парфумована вода", "одеколон", "perfume", "edt", "edp", "духи"])
+                        if is_perfume and curr_price > MAX_PERFUME_PRICE_UAH:
+                            continue
 
                         discount_pct = 0
                         if old_price and old_price > curr_price:
