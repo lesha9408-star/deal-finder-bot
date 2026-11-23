@@ -22,21 +22,26 @@ COMPETITOR_STORES = [
 
 # CEILINGS FOR REAL "DEAL" STATUS (UAH)
 PRICE_CEILINGS = {
-    "шоколад": 45.0,
-    "chocolate": 45.0,
-    "кава мелена": 120.0,
-    "кава розчинна": 150.0,
-    "чай": 40.0,
-    "масло": 80.0,
-    "кисломолочн": 45.0,
-    "творог": 45.0,
-    "простонаше": 45.0,
-    "сметана": 42.0,
-    "кефір": 48.0,
-    "молоко": 42.0,
-    "макарон": 35.0,
-    "цукор": 35.0,
-    "олія соняшник": 65.0
+    "шоколад": 40.0,
+    "chocolate": 40.0,
+    "кава мелена": 110.0,
+    "кава розчинна": 130.0,
+    "чай": 35.0,
+    "масло": 75.0,
+    "кисломолочн": 40.0,
+    "творог": 40.0,
+    "простонаше": 40.0,
+    "брі": 65.0,
+    "brie": 65.0,
+    "камамбер": 65.0,
+    "camembert": 65.0,
+    "сметана": 38.0,
+    "кефір": 45.0,
+    "молоко": 38.0,
+    "макарон": 30.0,
+    "цукор": 32.0,
+    "олія соняшник": 55.0,
+    "пауч": 13.5
 }
 
 def check_price_ceiling(title: str, price: float) -> bool:
@@ -100,7 +105,7 @@ def compare_across_ukraine_stores(query: str, current_store_name: str = "") -> D
         "competitor_samples": prices
     }
 
-def verify_and_enrich_deal(deal_price: float, raw_title: str, store_name: str = "", min_savings_percent: int = 20) -> Dict[str, Any]:
+def verify_and_enrich_deal(deal_price: float, raw_title: str, store_name: str = "", min_savings_percent: int = 25) -> Dict[str, Any]:
     # 1. Sanity check: must be within cheap deal ceiling
     if not check_price_ceiling(raw_title, deal_price):
         return {

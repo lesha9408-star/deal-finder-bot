@@ -72,7 +72,7 @@ def is_staple_food(title: str) -> bool:
             return True
     return False
 
-def get_supermarket_food_deals(min_discount_percent: int = 25) -> List[Dict[str, Any]]:
+def get_supermarket_food_deals(min_discount_percent: int = 35) -> List[Dict[str, Any]]:
     deals = []
     seen_urls = set()
 

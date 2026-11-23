@@ -61,11 +61,11 @@ def notify_apartments(max_items: int = 2):
 
     logger.info(f"Отправлено новых квартир: {sent_count}")
 
-def notify_food_groceries(max_items: int = 5):
+def notify_food_groceries(max_items: int = 3):
     logger.info("--- Поиск РЕАЛЬНО дешевых базовых продуктов (Auchan, Novus, Varus) ---")
     
-    deals_auchan_novus = get_supermarket_food_deals(min_discount_percent=25)
-    deals_varus = get_varus_food_deals(min_discount_percent=25)
+    deals_auchan_novus = get_supermarket_food_deals(min_discount_percent=35)
+    deals_varus = get_varus_food_deals(min_discount_percent=35)
     
     combined_deals = []
     max_len = max(len(deals_auchan_novus), len(deals_varus))
@@ -93,8 +93,8 @@ def notify_food_groceries(max_items: int = 5):
         url = deal["url"]
         photo = deal.get("photo_url")
 
-        # Strict multi-chain verification: must be at least 20% cheaper than lowest competitor
-        verification = verify_and_enrich_deal(deal_price, title, store_name=source, min_savings_percent=20)
+        # Strict multi-chain verification: must be at least 25% cheaper than lowest competitor
+        verification = verify_and_enrich_deal(deal_price, title, store_name=source, min_savings_percent=25)
         if not verification.get("is_worth_it"):
             continue
 

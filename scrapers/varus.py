@@ -55,7 +55,7 @@ def is_staple_food(title: str) -> bool:
             return True
     return False
 
-def get_varus_food_deals(min_discount_percent: int = 25) -> List[Dict[str, Any]]:
+def get_varus_food_deals(min_discount_percent: int = 35) -> List[Dict[str, Any]]:
     """Scrapes Varus directly using their public SSR catalog without requiring any user login."""
     deals = []
     seen_ids = set()
