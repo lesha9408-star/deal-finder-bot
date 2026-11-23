@@ -7,9 +7,9 @@ from database import init_db, is_seen, mark_as_seen
 from notifier import send_telegram_message, send_telegram_photo
 from comparator import verify_and_enrich_deal
 from scrapers.real_estate import get_latest_kyiv_apartments
-from scrapers.groceries import get_supermarket_food_deals
+from scrapers.groceries import get_supermarket_food_deals, get_cheap_cat_pouches
 from scrapers.varus import get_varus_food_deals
-from scrapers.kasta import parse_kasta_query
+from scrapers.clothing import get_branded_outlet_deals
 from scrapers.kfc import get_kfc_deals
 
 logging.basicConfig(
@@ -64,11 +64,9 @@ def notify_apartments(max_items: int = 2):
 def notify_food_groceries(max_items: int = 5):
     logger.info("--- Поиск РЕАЛЬНО дешевых базовых продуктов (Auchan, Novus, Varus) ---")
     
-    # 1. Fetch staple food deals from all 3 chains
     deals_auchan_novus = get_supermarket_food_deals(min_discount_percent=25)
     deals_varus = get_varus_food_deals(min_discount_percent=25)
     
-    # Interleave deals from stores
     combined_deals = []
     max_len = max(len(deals_auchan_novus), len(deals_varus))
     for i in range(max_len):
@@ -143,24 +141,33 @@ def notify_food_groceries(max_items: int = 5):
 
     logger.info(f"Отправлено проверенных супер-скидок на базовые продукты: {sent_count}")
 
-def notify_rare_cat_food_steal(max_items: int = 1):
-    deals = parse_kasta_query("корм для котів", min_discount_percent=45)
-    for deal in deals[:max_items]:
-        item_id = deal["id"]
+def notify_cheap_cat_pouches(max_items: int = 2):
+    """Notifies on cheap cat food pouches (10-14 UAH) in Auchan/supermarkets."""
+    logger.info("--- Поиск дешевых паучей для кошек (до 14 ₴) ---")
+    pouches = get_cheap_cat_pouches(max_price=14.5)
+    sent_count = 0
+
+    for item in pouches:
+        if sent_count >= max_items:
+            break
+
+        item_id = item["id"]
         if is_seen(item_id):
             continue
 
-        title = deal["title"]
-        price = deal["price"]
-        discount = deal.get("discount", "-45%")
-        url = deal["url"]
-        photo = deal.get("photo_url")
+        title = item["title"]
+        price = item["price"]
+        source = item["source"]
+        url = item["url"]
+        photo = item.get("photo_url")
 
         caption = (
-            f"🐱 <b>Редкая супер-скидка на корм ({discount})</b>\n\n"
+            f"🐱 <b>Дешевый корм для кошек (пауч до 14 ₴)</b>\n"
+            f"🏬 <i>{source}</i>\n\n"
             f"📦 <b>{title}</b>\n"
-            f"💵 <b>Цена:</b> {price}\n\n"
-            f"🔥 <a href='{url}'>Забрать со скидкой</a>"
+            f"💵 <b>Цена:</b> <b>{price}</b>\n\n"
+            f"💡 <i>Отличная цена за порционный пауч!</i>\n\n"
+            f"🛒 <a href='{url}'>Купить в магазине</a>"
         )
 
         success = False
@@ -170,8 +177,62 @@ def notify_rare_cat_food_steal(max_items: int = 1):
             success = send_telegram_message(caption, item_key=item_id)
 
         if success:
-            mark_as_seen(item_id, "Kasta.ua", title, price, url)
+            mark_as_seen(item_id, source, title, price, url)
+            sent_count += 1
             time.sleep(1.2)
+
+    logger.info(f"Отправлено дешевых паучей для кошек: {sent_count}")
+
+def notify_branded_outlet(max_items: int = 2):
+    """Notifies on deep outlet liquidation discounts (Nike, Adidas, Puma, etc. >= 50%)."""
+    logger.info("--- Поиск ликвидаций брендовой обуви и одежды (-50% и более) ---")
+    deals = get_branded_outlet_deals(min_discount=50, max_items=max_items)
+    sent_count = 0
+
+    for deal in deals:
+        if sent_count >= max_items:
+            break
+
+        item_id = deal["id"]
+        if is_seen(item_id):
+            continue
+
+        title = deal["title"]
+        price = deal["price"]
+        old_price = deal.get("old_price")
+        discount = deal.get("discount", "-50%")
+        source = deal["source"]
+        url = deal["url"]
+        photo = deal.get("photo_url")
+
+        caption = (
+            f"👟 <b>Ликвидация / Распродажа брендов ({discount})</b>\n"
+            f"🏬 <i>{source}</i>\n\n"
+            f"🏷 <b>{title}</b>\n"
+            f"💵 <b>Цена распродажи:</b> <b>{price}</b>"
+        )
+        if old_price:
+            caption += f" <s>({old_price})</s>\n\n"
+        else:
+            caption += "\n\n"
+
+        caption += (
+            f"🔥 <i>Скидка {discount} на оригинальный бренд (остатки склада / закрытие коллекций)!</i>\n\n"
+            f"🛒 <a href='{url}'>Смотреть размер и заказать</a>"
+        )
+
+        success = False
+        if photo:
+            success = send_telegram_photo(caption, photo, item_key=item_id)
+        if not success:
+            success = send_telegram_message(caption, item_key=item_id)
+
+        if success:
+            mark_as_seen(item_id, source, title, price, url)
+            sent_count += 1
+            time.sleep(1.2)
+
+    logger.info(f"Отправлено ликвидаций брендовой одежды: {sent_count}")
 
 def notify_kfc(max_items: int = 1):
     deals = get_kfc_deals()
@@ -206,8 +267,9 @@ def notify_kfc(max_items: int = 1):
 def run_once():
     init_db()
     notify_food_groceries(max_items=4)
+    notify_cheap_cat_pouches(max_items=1)
+    notify_branded_outlet(max_items=1)
     notify_apartments(max_items=2)
-    notify_rare_cat_food_steal(max_items=1)
     notify_kfc(max_items=1)
 
 if __name__ == "__main__":

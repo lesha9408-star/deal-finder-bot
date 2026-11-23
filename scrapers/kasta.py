@@ -98,7 +98,7 @@ def parse_kasta_query(query: str, min_discount_percent: int = 15) -> List[Dict[s
                 item_id = f"kasta_{prod_id_match.group(1)}" if prod_id_match else href
                 full_url = "https://kasta.ua" + href
 
-                if discount_percent >= min_discount_percent or (old_price and curr_price and old_price > curr_price):
+                if discount_percent >= min_discount_percent:
                     results.append({
                         "id": item_id,
                         "source": "Kasta.ua",

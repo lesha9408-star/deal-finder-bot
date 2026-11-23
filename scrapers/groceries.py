@@ -128,3 +128,52 @@ def get_supermarket_food_deals(min_discount_percent: int = 25) -> List[Dict[str,
 
     logger.info(f"Auchan & Novus found {len(deals)} staple deals with >={min_discount_percent}% discount")
     return deals
+
+
+def get_cheap_cat_pouches(max_price: float = 14.5) -> List[Dict[str, Any]]:
+    """Finds truly cheap cat food pouches (10-14 UAH) in supermarkets like Auchan."""
+    pouches = []
+    seen = set()
+
+    with httpx.Client(timeout=10.0, headers=HEADERS) as client:
+        # Search Auchan Lybidska
+        for q in ["корм для котів пауч", "вологий корм для котів"]:
+            try:
+                url = f"https://stores-api.zakaz.ua/stores/48246415/products/search/?q={httpx.URL(q).raw_path.decode()}"
+                r = client.get(url)
+                if r.status_code == 200:
+                    data = r.json()
+                    for p in data.get("results", []):
+                        title = p.get("title", "")
+                        price = p.get("price", 0) / 100.0
+                        if price <= 0 or price > max_price:
+                            continue
+
+                        # Must be wet food / pouch
+                        t_lower = title.lower()
+                        if not any(k in t_lower for k in ["волог", "пауч", "wet", "шматочки", "паштет", "мус", "100g", "85g", "100г", "85г"]):
+                            continue
+
+                        web_url = p.get("web_url")
+                        if not web_url or web_url in seen:
+                            continue
+                        seen.add(web_url)
+
+                        old_price = p.get("old_price", 0) / 100.0
+                        photo = p.get("image", {}).get("s350x350")
+                        ean = p.get("ean", "")
+
+                        pouches.append({
+                            "id": f"cat_pouch_{ean or hash(title)}",
+                            "source": "Ашан Либідська (Зоотовари)",
+                            "title": title,
+                            "price": f"{price:.1f} ₴",
+                            "price_num": price,
+                            "old_price": f"{old_price:.1f} ₴" if old_price else None,
+                            "url": web_url.replace("/en/", "/uk/"),
+                            "photo_url": photo
+                        })
+            except Exception as e:
+                logger.error(f"Error fetching cheap cat pouches: {e}")
+
+    return pouches
