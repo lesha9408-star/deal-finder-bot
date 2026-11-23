@@ -21,6 +21,11 @@ LEFT_BANK_KEYWORDS = [
     "дврз", "биківн", "быковн", "бортнич", "лівобереж", "левобереж"
 ]
 
+# User Location & Hyperlocal Stores Config
+USER_PRIMARY_ADDRESS = "бульвар Миколи Міхновського, 6Б, Київ"
+USER_SECONDARY_ADDRESS = "бульвар Миколи Міхновського, 7, Київ"
+WALKING_DISTANCE_MAX_KM = 1.2  # Immediate walking distance on user's street / neighborhood
+
 # Right Bank preferred target areas
 RIGHT_BANK_KEYWORDS = [
     "либід", "лыбед", "демі", "деме", "печер", "голосі", "голосе", 
