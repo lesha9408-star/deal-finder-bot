@@ -60,7 +60,72 @@ def clean_query_title(title: str) -> str:
     words = [w for w in cleaned.split() if len(w) > 1 and not w.isdigit()]
     return " ".join(words[:3])
 
-def compare_across_ukraine_stores(query: str, current_store_name: str = "") -> Dict[str, Any]:
+def extract_weight_grams(text: str):
+    if not text:
+        return None
+    text_lower = text.lower()
+    m_kg = re.search(r"(\d+[\.,]?\d*)\s*(?:кг|kg)\b", text_lower)
+    if m_kg:
+        return float(m_kg.group(1).replace(",", ".")) * 1000.0
+    m_g = re.search(r"(\d+[\.,]?\d*)\s*(?:г|g|гр|грамм|грам)\b", text_lower)
+    if m_g:
+        return float(m_g.group(1).replace(",", "."))
+    m_ml = re.search(r"(\d+[\.,]?\d*)\s*(?:мл|ml)\b", text_lower)
+    if m_ml:
+        return float(m_ml.group(1).replace(",", "."))
+    m_l = re.search(r"(\d+[\.,]?\d*)\s*(?:л|l)\b", text_lower)
+    if m_l:
+        return float(m_l.group(1).replace(",", ".")) * 1000.0
+    return None
+
+def find_best_competitor_match(raw_title: str, results: list):
+    target_lower = raw_title.lower()
+    target_weight = extract_weight_grams(raw_title)
+
+    is_herring = any(k in target_lower for k in ["оселед", "селедк", "селедочк"])
+
+    # Stop words that appear in packaging or states
+    stop_words = {"філе", "маслі", "олії", "посолу", "пряного", "смак", "смаку", "напівтвердий", "твердий", "для", "під", "шматочки"}
+    target_words = set(re.findall(r"\b[a-zA-Zа-яА-Яіїєґ]{3,}\b", target_lower)) - stop_words
+
+    candidates = []
+    for item in results:
+        title = item.get("title", "")
+        title_lower = title.lower()
+        unit = item.get("unit")
+        weight = item.get("weight") or extract_weight_grams(title)
+
+        # 1. Negative fish check: herring must NEVER match sprat / salaka / etc.
+        if is_herring:
+            if any(bad in title_lower for bad in ["салака", "шпрот", "мойва", "сардин", "кілька", "тюлька"]):
+                continue
+            if not any(good in title_lower for good in ["оселед", "селед", "herring"]):
+                continue
+
+        # 2. Strict weight check: if deal is packaged (e.g. 185g, 250g), reject kg bulk / head
+        if target_weight and target_weight < 800:
+            if unit == "kg" and (weight is None or weight >= 900):
+                continue
+            if weight is not None:
+                diff_pct = abs(weight - target_weight) / target_weight
+                if diff_pct > 0.25:  # more than 25% difference in pack weight
+                    continue
+
+        cand_words = set(re.findall(r"\b[a-zA-Zа-яА-Яіїєґ]{3,}\b", title_lower)) - stop_words
+        overlap = len(target_words & cand_words)
+        weight_diff = abs(weight - target_weight) if (weight and target_weight) else 999
+        candidates.append((overlap, -weight_diff, item))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    best_overlap, _, best_item = candidates[0]
+    if best_overlap >= 1:
+        return best_item
+    return None
+
+def compare_across_ukraine_stores(raw_title: str, query: str, current_store_name: str = "") -> Dict[str, Any]:
     prices = []
     with httpx.Client(timeout=8.0, headers=HEADERS) as client:
         for store_id, store_name in COMPETITOR_STORES:
@@ -73,15 +138,16 @@ def compare_across_ukraine_stores(query: str, current_store_name: str = "") -> D
                 r = client.get(url)
                 if r.status_code == 200:
                     data = r.json()
-                    for p in data.get("results", [])[:1]:
-                        p_price = p.get("price", 0) / 100.0
-                        raw_url = p.get("web_url", "")
+                    best_match = find_best_competitor_match(raw_title, data.get("results", []))
+                    if best_match:
+                        p_price = best_match.get("price", 0) / 100.0
+                        raw_url = best_match.get("web_url", "")
                         # Ensure link is Ukrainian locale
                         web_url = raw_url.replace("/en/", "/uk/") if raw_url else ""
                         if p_price > 5 and web_url:
                             prices.append({
                                 "store": store_name,
-                                "title": p.get("title"),
+                                "title": best_match.get("title"),
                                 "price": p_price,
                                 "url": web_url
                             })
@@ -117,8 +183,8 @@ def verify_and_enrich_deal(deal_price: float, raw_title: str, store_name: str = 
     if not search_query:
         return {"is_worth_it": False, "reason": "Невозможно выделить ключевые слова"}
 
-    # 2. Check competitor store chains in Ukraine
-    comp_data = compare_across_ukraine_stores(search_query, store_name)
+    # 2. Check competitor store chains in Ukraine with exact product matching
+    comp_data = compare_across_ukraine_stores(raw_title, search_query, store_name)
     if not comp_data.get("found"):
         # Without proof from competitors, reject
         return {

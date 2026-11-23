@@ -12,6 +12,7 @@ from scrapers.real_estate import get_latest_kyiv_apartments
 from scrapers.groceries import get_supermarket_food_deals, get_cheap_cat_pouches
 from scrapers.varus import get_varus_food_deals
 from scrapers.clothing import get_branded_outlet_deals
+from scrapers.makeup import get_makeup_clearance_deals
 from scrapers.kfc import get_kfc_deals
 
 logging.basicConfig(
@@ -281,6 +282,56 @@ def notify_branded_outlet(max_items: int = 2):
 
     logger.info(f"Отправлено ликвидаций брендовой одежды: {sent_count}")
 
+def notify_makeup_clearance(max_items: int = 1):
+    """Notifies on real clearance / uncenka items from MakeUp."""
+    logger.info("--- Поиск уцененных товаров на MakeUp ---")
+    deals = get_makeup_clearance_deals(max_results=max_items * 4)
+    sent_count = 0
+
+    for deal in deals:
+        if sent_count >= max_items:
+            break
+
+        item_id = deal["id"]
+        if is_seen(item_id):
+            continue
+
+        title = deal["title"]
+        curr_price = deal["current_price"]
+        old_price = deal.get("old_price")
+        source = deal["store"]
+        url = deal["url"]
+        photo = deal.get("image_url")
+
+        caption = (
+            f"💄 <b>MakeUp: Раздел Уценка / Скидки</b>\n"
+            f"🏬 <i>{source}</i>\n\n"
+            f"📦 <b>{title}</b>\n"
+            f"💵 <b>Цена:</b> <b>{curr_price}</b>"
+        )
+        if old_price:
+            caption += f" <s>({old_price})</s>\n\n"
+        else:
+            caption += "\n\n"
+
+        caption += (
+            f"💡 <i>Товар из официального раздела уценки MakeUp (поврежденная упаковка/ликвидация).</i>\n\n"
+            f"🛒 <a href='{url}'>Заказать на MakeUp</a>"
+        )
+
+        success = False
+        if photo:
+            success = send_telegram_photo(caption, photo, item_key=item_id)
+        if not success:
+            success = send_telegram_message(caption, item_key=item_id)
+
+        if success:
+            mark_as_seen(item_id, source, title, curr_price, url)
+            sent_count += 1
+            time.sleep(1.2)
+
+    logger.info(f"Отправлено уцененных товаров MakeUp: {sent_count}")
+
 def notify_kfc(max_items: int = 1):
     deals = get_kfc_deals()
     for deal in deals[:max_items]:
@@ -317,6 +368,7 @@ def run_once():
     notify_food_groceries(max_items=3)
     notify_cheap_cat_pouches(max_items=1)
     notify_branded_outlet(max_items=1)
+    notify_makeup_clearance(max_items=1)
     notify_apartments(max_items=2, force=force_apartments)
     notify_kfc(max_items=1)
 
